@@ -1,3 +1,22 @@
+/*
+ *   This file is part of iouyap, a program to bridge IOU with
+ *   network interfaces.
+ *
+ *   Copyright (C) 2013, 2014  James E. Carpenter
+ *
+ *   iouyap is free software: you can redistribute it and/or modify it
+ *   under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   iouyap is distributed in the hope that it will be useful, but
+ *   WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef IOUYAP_H_
 #define IOUYAP_H_
@@ -12,7 +31,9 @@
 #define NETIO_DIR_PREFIX      "/tmp/netio"
 #define BASE_PORT             49000
 #define DEFAULT_STRICT_MODE   0
+#define TAP_DEV               "/dev/net/tun"
 
+// TODO: MAX_MTU needs to be double checked in the new IOUs
 #define MAX_MTU               0x1000      // according to IOU
 #define MAX_PORTS             256
 
@@ -53,6 +74,14 @@
 /* bit lengths */
 #define IOU_PORT_UNIT_LEN               4
 #define IOU_PORT_BAY_LEN                4
+
+/* link-layer header type values */
+/* see http://www.tcpdump.org/linktypes.html */
+#define LINKTYPE_ETHERNET       1
+#define LINKTYPE_PPP_HDLC       50
+#define LINKTYPE_C_HDLC         104
+#define LINKTYPE_FRELAY         107
+#define LINKTYPE_SITA           196     /* for when I add X.25 */
 
 /* Not everyone has UNIX_PATH_MAX */
 #ifndef UNIX_PATH_MAX
@@ -166,10 +195,17 @@ typedef struct
   socklen_t sa_len;
 } iou_node_t;
 
+// TODO: pack
 typedef struct
 {
   list_head_t *segment;
   int sfd;
+
+  int span_sfd;
+  int pcap_fd;
+  char *pcap_fifo;
+  int pcap_linktype;
+  int pcap_caplen;
 
   union
   {
@@ -178,11 +214,29 @@ typedef struct
     struct sockaddr_un sa_un;
   };
   socklen_t sa_len;
+  char *socket_fname;
 
   pthread_t thread_id;
   int iou_port;
   iou_node_t *nodes;
 } foreign_port_t;
+
+
+struct pcap_file_header {
+  u_int32_t magic;
+  u_short   version_major;
+  u_short   version_minor;
+  int32_t   thiszone;           /* gmt to local correction */
+  u_int32_t sigfigs;            /* accuracy of timestamps */
+  u_int32_t snaplen;            /* max length saved portion of each pkt */
+  u_int32_t linktype;           /* data link type (LINKTYPE_*) */
+};
+
+struct pcap_pkthdr {
+  struct timeval ts;            /* time stamp */
+  u_int32_t caplen;             /* length of portion present */
+  u_int32_t len;                /* length this packet (off wire) */
+};
 
 
 extern int yap_appl_id;

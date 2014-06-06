@@ -1,3 +1,23 @@
+/*
+ *   This file is part of iouyap, a program to bridge IOU with
+ *   network interfaces.
+ *
+ *   Copyright (C) 2013, 2014  James E. Carpenter
+ *
+ *   iouyap is free software: you can redistribute it and/or modify it
+ *   under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   iouyap is distributed in the hope that it will be useful, but
+ *   WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 %{
 #include <stdlib.h>
 #include <stdio.h>
@@ -82,7 +102,7 @@ params
     : ':' INT                   {
                                     sprintf($$, ":%d", $2);
                                     RANGE_CHECK("PORT", $2, PORT_MIN, PORT_MAX);
-                                    iou_node_tmp->port = unpack_port ($2);                                 
+                                    iou_node_tmp->port = unpack_port ($2);
                                 }
     | ':' INT '/' INT           {
                                     sprintf($$, ":%d/%d", $2, $4);
@@ -109,17 +129,17 @@ host
                                 }
     | '@' ADDRESS               {
                                     struct hostent *host;
-      
+
                                     sprintf($$, "@%s", $2);
                                     host = gethostbyname ($2);
-                                    if (host == NULL) 
-                                      {                                     
+                                    if (host == NULL)
+                                      {
                                         log_fmt ("gethostbyname(%s) failed: ", $2);
                                         herror ("");
                                         param_error = 1;
                                         errors_found++;
                                       }
-                                    else 
+                                    else
                                       {
                                         iou_node_tmp->addr = *(struct in_addr *)host->h_addr_list[0];
                                         if (yap_verbose >= LOG_NOISY)
@@ -138,4 +158,3 @@ void yyerror(const char *msg) {
     log_msg(msg);
     errors_found++;
 }
-

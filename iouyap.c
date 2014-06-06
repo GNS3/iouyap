@@ -37,7 +37,14 @@
 #include <netpacket/packet.h>
 #include <net/ethernet.h>
 #include <netdb.h>
-#include "iniparser.h"
+#include <iniparser.h>
+#include <net/if_arp.h>
+#include <linux/rtnetlink.h>
+#include <linux/netlink.h>
+#include <sys/time.h>
+#include <limits.h>
+#include <sys/file.h>
+#include <ctype.h>
 
 #include "iouyap.h"
 #include "netmap.h"
@@ -188,10 +195,10 @@ lock_socket (const char *name)
 /* getbits:  get n bits from position p
  *    (liberated from K&R2, p. 49)
  */
-static unsigned int 
+static unsigned int
 getbits (unsigned int x, int p, int n)
 {
-  return (x >> (p + 1 - n)) & ~(~0 << n);  
+  return (x >> (p + 1 - n)) & ~(~0 << n);
 }
 
 
@@ -207,10 +214,10 @@ appl_id_t
 unpack_ids (unsigned short appl_id)
 {
   appl_id_t i;
-  
+
   i.id = getbits(appl_id, IOU_IDS_ID, IOU_IDS_ID_LEN);
   i.subid = getbits(appl_id, IOU_IDS_SUBID, IOU_IDS_SUBID_LEN);
-  i.subid_present = getbits(appl_id, IOU_IDS_SUBID_PRESENT, 
+  i.subid_present = getbits(appl_id, IOU_IDS_SUBID_PRESENT,
                             IOU_IDS_SUBID_PRESENT_LEN);
 
   return i;
@@ -221,7 +228,7 @@ port_t
 unpack_port (unsigned char port)
 {
   port_t p;
-  
+
   p.unit = getbits(port, IOU_PORT_UNIT, IOU_PORT_UNIT_LEN);
   p.bay = getbits(port, IOU_PORT_BAY, IOU_PORT_BAY_LEN);
 
@@ -233,12 +240,12 @@ unsigned short
 pack_ids (appl_id_t appl_id)
 {
   unsigned short i = 0;
-  
+
   i = setbits (i, IOU_IDS_ID, IOU_IDS_ID_LEN, appl_id.id);
   i = setbits (i, IOU_IDS_SUBID, IOU_IDS_SUBID_LEN, appl_id.subid);
-  i = setbits (i, IOU_IDS_SUBID_PRESENT, IOU_IDS_SUBID_PRESENT_LEN, 
+  i = setbits (i, IOU_IDS_SUBID_PRESENT, IOU_IDS_SUBID_PRESENT_LEN,
                appl_id.subid_present);
-  
+
   return i;
 }
 
@@ -247,10 +254,10 @@ unsigned char
 pack_port (port_t port)
 {
   unsigned char p = 0;
-  
+
   p = setbits (p, IOU_PORT_BAY, IOU_PORT_BAY_LEN, port.bay);
   p = setbits (p, IOU_PORT_UNIT, IOU_PORT_UNIT_LEN, port.unit);
-  
+
   return p;
 }
 
@@ -262,19 +269,19 @@ parse_iou_hdr (iou_hdr_t *iou_hdr, unsigned char *iou_hdr_buf)
   unsigned short src_node;
   unsigned char dst_port;
   unsigned char src_port;
-  
+
   /* destination node */
   dst_node = ntohs (*(unsigned short *) &iou_hdr_buf[IOU_DST_IDS]);
   iou_hdr->dst_node.ids = unpack_ids (dst_node);
-  
+
   /* source node */
   src_node = ntohs (*(unsigned short *) &iou_hdr_buf[IOU_SRC_IDS]);
   iou_hdr->src_node.ids = unpack_ids (src_node);
-  
+
   /* destination port */
   dst_port = iou_hdr_buf[IOU_DST_PORT];
   iou_hdr->dst_node.port = unpack_port (dst_port);
-  
+
   /* source port */
   src_port = iou_hdr_buf[IOU_SRC_PORT];
   iou_hdr->src_node.port = unpack_port (src_port);
@@ -294,7 +301,7 @@ build_iou_hdr (unsigned char *buf, iou_hdr_t iou_hdr)
   port_t src_port = iou_hdr.src_node.port;
   unsigned short n;
 
-  /* destination id */  
+  /* destination id */
   n = htons (pack_ids (dst_ids));
   memcpy(&buf[IOU_DST_IDS], (unsigned char *)&n, IOU_IDS_SIZE);
   /* source id */
@@ -320,6 +327,50 @@ get_iou_udp_port (int port)
 }
 
 
+static int
+write_pcap_header (int fd, int snaplen, int linktype)
+{
+  struct pcap_file_header header;
+
+  header.magic = 0xa1b2c3d4;
+  header.version_major = 2;
+  header.version_minor = 4;
+  header.thiszone = 0;
+  header.sigfigs = 0;
+  header.snaplen = snaplen;
+  header.linktype = linktype;
+
+  if (write (fd, &header, sizeof header) != sizeof header)
+    return -1;
+  return 0;
+}
+
+static int
+write_pcap_frame (int fd, const unsigned char *packet, size_t len,
+                  size_t caplen, int linktype)
+{
+  size_t count;
+  struct pcap_pkthdr pcap_header;
+  size_t hdr_len = sizeof pcap_header;
+  unsigned char buf[MAX_MTU + hdr_len];
+
+  gettimeofday (&pcap_header.ts, 0);
+
+  if (len < caplen)
+    caplen = len;
+  pcap_header.caplen = caplen;
+  pcap_header.len = len;
+
+  memcpy (buf, &pcap_header, hdr_len);
+  memcpy (&buf[hdr_len], packet, caplen);
+
+  count = caplen + hdr_len;
+  if (write (fd, &buf, count) != count)
+    return -1;
+  return 0;
+}
+
+
 static void *
 foreign_listener (void *arg)
 {
@@ -327,7 +378,7 @@ foreign_listener (void *arg)
   int segment_size;
   ssize_t bytes_received, bytes_sent;
   iou_node_t *nodes;
-  unsigned char buf[IOU_HDR_SIZE + MAX_MTU];
+  unsigned char buf[IOU_HDR_SIZE + MAX_MTU]; // TODO: may already include HDR
   int i, j;
 
   /* segment size, minus us */
@@ -335,7 +386,7 @@ foreign_listener (void *arg)
   nodes = port->nodes;
 
   if (yap_verbose >= LOG_EXTENDED)
-    log_fmt ("thread for %d:%d started (sfd=%d)\n",
+    log_fmt ("foreign listener for %d:%d started (sfd=%d)\n",
              yap_appl_id, port->iou_port, port->sfd);
 
   for (;;)
@@ -365,6 +416,27 @@ foreign_listener (void *arg)
         debug_log_fmt ("received %d bytes (sfd=%d)\n",
                        bytes_received, port->sfd);
 
+
+      if (port->span_sfd != NO_FD)
+        write (port->span_sfd, &buf[IOU_HDR_SIZE], bytes_received);
+
+
+      if (port->pcap_fd != NO_FD)
+        {
+          if (write_pcap_frame (port->pcap_fd, &buf[IOU_HDR_SIZE],
+                                bytes_received, port->pcap_caplen,
+                                port->pcap_linktype) < 0)
+            {
+              if (errno == EPIPE)
+                {
+                  log_msg ("Packet capture reader disappeared");
+                  log_msg ("Restarting with a SIGHUP");
+                  kill (0, SIGHUP);
+                }
+            }
+        }
+
+
       /* Add the length of the IOU header we'll be sending */
       bytes_received += IOU_HDR_SIZE;
 
@@ -386,7 +458,7 @@ foreign_listener (void *arg)
           if (bytes_sent != bytes_received)
             {
               if (bytes_sent != -1)  /* no error, shouldn't happen */
-                {               
+                {
                   log_fmt ("sendto() only sent %d of %d bytes!"
                            " (sfd=%d)\n", bytes_sent,
                            bytes_received, port->sfd);
@@ -396,6 +468,7 @@ foreign_listener (void *arg)
               switch (errno)
                 {
                 case ENOENT:   /* Socket file doesn't exist */
+                case ECONNREFUSED:
                   if (yap_verbose >= LOG_NOISY)
                     log_error ("sendto");
                   continue;
@@ -431,14 +504,14 @@ iou_listener (void *arg)
 {
   int sfd = *(int *) arg;
   ssize_t bytes_received, bytes_sent;
-  unsigned char buf[IOU_HDR_SIZE + MAX_MTU];
+  unsigned char buf[IOU_HDR_SIZE + MAX_MTU]; // TODO: may already include HDR
   unsigned int port;
 #ifdef DEBUG
   iou_hdr_t iou_hdr;
 #endif
 
   if (yap_verbose >= LOG_EXTENDED)
-    log_fmt ("thread for ID %d started (sfd=%d)\n", yap_appl_id, sfd);
+    log_fmt ("IOU listener for ID %d started (sfd=%d)\n", yap_appl_id, sfd);
 
   for (;;)
     {
@@ -452,10 +525,10 @@ iou_listener (void *arg)
 
 #ifdef DEBUG
       parse_iou_hdr (&iou_hdr, buf);
-      if (iou_hdr.dst_node.ids.id != yap_appl_id 
+      if (iou_hdr.dst_node.ids.id != yap_appl_id
           || iou_hdr.dst_node.ids.subid_present == 1)
         {
-          log_msg ("packet is not for us!");
+          log_msg ("Packet is not for us!");
           continue;
         }
 #endif
@@ -469,13 +542,36 @@ iou_listener (void *arg)
 
       /* Send on the packet, minus the IOU header */
       bytes_received -= IOU_HDR_SIZE;
+
+
+      if (port_table[port].span_sfd != NO_FD)
+        write (port_table[port].span_sfd, &buf[IOU_HDR_SIZE],
+               bytes_received);
+
+
+      if (port_table[port].pcap_fd != NO_FD)
+        {
+          if (write_pcap_frame (port_table[port].pcap_fd, &buf[IOU_HDR_SIZE],
+                                bytes_received, port_table[port].pcap_caplen,
+                                port_table[port].pcap_linktype) < 0)
+            {
+              if (errno == EPIPE)
+                {
+                  log_msg ("Packet capture reader disappeared");
+                  log_msg ("Restarting with a SIGHUP");
+                  kill (0, SIGHUP);
+                }
+            }
+        }
+
+
       bytes_sent = write (port_table[port].sfd, &buf[IOU_HDR_SIZE],
                           bytes_received);
 
       if (bytes_sent != bytes_received)
         {
           if (bytes_sent != -1)  /* no error, shouldn't happen */
-            {                   
+            {
               log_fmt ("write() only sent %d of %d bytes! (sfd=%d)\n",
                        bytes_sent, bytes_received, sfd);
               continue;
@@ -521,6 +617,7 @@ iou_listener (void *arg)
                   log_error ("connect");
                   goto shutdown;
                 }
+              break;
             default:
               break;
             }
@@ -598,7 +695,7 @@ open_tap_dev (foreign_port_t * port, char *dev)
   if (yap_verbose >= LOG_EXTENDED)
     log_fmt ("Trying to open %s\n", dev);
 
-  if ((sfd = open ("/dev/net/tun", O_RDWR)) < 0)
+  if ((sfd = open (TAP_DEV, O_RDWR)) < 0)
     fatal_error ("open");
 
   memset (&ifr, 0, sizeof ifr);
@@ -618,6 +715,173 @@ open_tap_dev (foreign_port_t * port, char *dev)
 
 
 static void
+open_span_dev (foreign_port_t * port, char *dev)
+{
+  struct ifreq ifr;
+  int sfd;
+
+  int sock;
+  struct {
+    struct nlmsghdr  nh;
+    struct ifinfomsg ifinfo;
+    char             attrbuf[512];
+  } req;
+  struct rtattr *rta;
+  unsigned int mtu = 68;  // too small for IPv6, which is good here
+  int rtnetlink_sk;
+
+  if (strlen (dev) >= IFNAMSIZ)
+    die ("too big");
+
+  if (yap_verbose >= LOG_EXTENDED)
+    log_fmt ("Trying to open %s\n", dev);
+
+  if ((sfd = open (TAP_DEV, O_WRONLY)) < 0)
+    fatal_error ("open");
+
+  memset (&ifr, 0, sizeof ifr);
+  ifr.ifr_flags = IFF_TAP | IFF_NO_PI | IFF_MULTI_QUEUE;
+
+  if (*dev)
+    strcpy (ifr.ifr_name, dev);
+  if (ioctl (sfd, TUNSETIFF, (void *) &ifr) < 0)
+    fatal_error ("TUNSETIFF ioctl");
+
+  if (yap_verbose >= LOG_BASIC)
+    log_fmt ("%s opened (sfd=%d)\n", ifr.ifr_name, sfd);
+
+  sock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (ioctl (sock, SIOCGIFINDEX, (void *) &ifr) < 0)
+    fatal_error ("SIOCGIFINDEX ioctl");
+
+  rtnetlink_sk = socket (AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+  memset (&req, 0, sizeof req);
+  req.nh.nlmsg_len = NLMSG_LENGTH (sizeof req.ifinfo);
+  req.nh.nlmsg_flags = NLM_F_REQUEST;
+  req.nh.nlmsg_type = RTM_SETLINK;
+  req.ifinfo.ifi_family = AF_UNSPEC;
+  req.ifinfo.ifi_index = ifr.ifr_ifindex;
+  req.ifinfo.ifi_change = 0xffffffff;
+  req.ifinfo.ifi_flags = IFF_UP | IFF_PROMISC | IFF_NOARP;
+  rta = (struct rtattr *)(((char *) &req) + NLMSG_ALIGN (req.nh.nlmsg_len));
+  rta->rta_type = IFLA_MTU;
+  rta->rta_len = RTA_LENGTH (sizeof (unsigned int));
+  req.nh.nlmsg_len = NLMSG_ALIGN (req.nh.nlmsg_len) + RTA_LENGTH (sizeof mtu);
+  memcpy (RTA_DATA (rta), &mtu, sizeof mtu);
+  send (rtnetlink_sk, &req, req.nh.nlmsg_len, 0);
+  close (rtnetlink_sk);
+
+  port->span_sfd = sfd;
+}
+
+
+static void
+open_pcap_file (foreign_port_t * port, char *file, int no_hdr, int overwrite)
+{
+  int fd;
+
+  if ((fd = open (file, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR)) < 0)
+    fatal_error ("open");
+
+  /* If we can get an exclusive lock (without blocking) then check to see
+   * if the file is empty. Write a pcap header if it is.
+   */
+  if (!no_hdr || overwrite)
+    {
+      if (flock (fd, LOCK_EX | LOCK_NB) == 0)
+        {
+          if (overwrite)
+            ftruncate (fd, 0);
+          if (!no_hdr && lseek (fd, 0, SEEK_END) == 0)
+            {
+              if (write_pcap_header (fd, port->pcap_caplen,
+                                     port->pcap_linktype) < 0)
+                {
+                  fatal_error ("write_pcap_header");
+                }
+            }
+        }
+      else if (errno == EWOULDBLOCK)
+        {
+          if (overwrite)
+            log_fmt ("Can't overwrite %s. Somebody has a lock.\n", file);
+        }
+      else
+        {
+          close (fd);
+          fatal_error ("flock");
+        }
+    }
+  /* For normal operation we hold a shared lock */
+  if (flock (fd, LOCK_SH) < 0)
+    {
+      close (fd);
+      fatal_error ("flock");
+    }
+
+  port->pcap_fd = fd;
+}
+
+
+static void
+open_pcap_pipe (foreign_port_t * port, char *file, int no_hdr)
+{
+  int fd;
+  int new_pipe = 0;
+
+  /* Create the named pipe. Whoever creates it has to clean up. */
+  if (mkfifo (file, S_IRUSR | S_IWUSR) == 0)
+    {
+      port->pcap_fifo = file;
+      new_pipe = 1;
+    }
+  else if (errno != EEXIST)
+    {
+      fatal_error ("mkfifo");
+    }
+
+  // O_RDWR allows us to open the pipe without any readers attached
+  if ((fd = open (file, O_RDWR)) < 0)
+    {
+      fatal_error ("open");
+    }
+
+  /* If we created the pipe then we should normally be the one to write the
+   * header.
+   */
+  if (!no_hdr && new_pipe)
+    {
+      if (flock (fd, LOCK_EX | LOCK_NB) == 0)
+        {
+          if (write_pcap_header (fd, port->pcap_caplen,
+                                 port->pcap_linktype) < 0)
+            {
+              fatal_error ("write_pcap_header");
+            }
+        }
+      else if (errno == EWOULDBLOCK)
+        {
+          log_msg ("Couldn't write pcap header to pipe we created! Locked.");
+        }
+      else
+        {
+          close (fd);
+          fatal_error ("flock");
+        }
+    }
+
+  /* For normal operation we hold a shared lock */
+  if (flock (fd, LOCK_SH) < 0)
+    {
+      close (fd);
+      fatal_error ("flock");
+    }
+
+  port->pcap_fd = fd;
+}
+
+
+static void
 open_tunnel_uds (foreign_port_t * port, char *socks)
 {
   char *local_sock;
@@ -630,22 +894,22 @@ open_tunnel_uds (foreign_port_t * port, char *socks)
 
   if (yap_verbose >= LOG_EXTENDED)
     {
-      log_fmt ("binding to Unix domain socket %s\n", local_sock);
-      log_fmt ("connecting to Unix domain socket %s\n", remote_sock);
+      log_fmt ("binding to %s\n", local_sock);
+      log_fmt ("connecting to %s\n", remote_sock);
     }
 
   if ((port->sfd = socket (AF_UNIX, SOCK_DGRAM, 0)) < 0)
     fatal_error ("socket");
 
   /* bind */
-  // TODO: we really should clean up the socket when we're done
   memset (&sock_addr, 0, sizeof sock_addr);
   sock_addr.sun_family = AF_UNIX;
   strcpy (sock_addr.sun_path, local_sock);
-
   unlink (sock_addr.sun_path);
   if (bind (port->sfd, (struct sockaddr *) &sock_addr, sizeof sock_addr))
     fatal_error ("bind");
+  /* save it so we can clean it up later */
+  port->socket_fname = local_sock;
 
   /* connect */
   port->sa_len = sizeof port->sa_un;
@@ -686,7 +950,12 @@ open_tunnel_udp (foreign_port_t * port, char *ports)
   remote_host = strtok (NULL, ":");
   remote_port = strtok (NULL, ":");
 
-  log_fmt ("DYNAMIPS %s : %s : %s\n", local_port, remote_host, remote_port);
+  if (yap_verbose >= LOG_EXTENDED)
+    {
+      log_fmt ("binding to UDP port %s\n", local_port);
+      log_fmt ("connecting to UDP %s:%s\n", remote_host, remote_port);
+    }
+
 
   /* bind */
 
@@ -824,7 +1093,7 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
   node_t *dst_node;
   iou_hdr_t iou_hdr;
   int i, j;
-  
+
   /* segment size, minus us */
   segment_size = port->segment->size - 1;
   nodes = calloc (segment_size, sizeof *nodes);
@@ -833,7 +1102,7 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
   /* SRC ID */
   iou_hdr.src_node.ids.id = yap_appl_id;
   iou_hdr.src_node.ids.subid = 0;
-  iou_hdr.src_node.ids.subid_present = 0;  
+  iou_hdr.src_node.ids.subid_present = 0;
   /* SRC port */
   iou_hdr.src_node.port = unpack_port (port->iou_port);
   /* message type */
@@ -855,13 +1124,13 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
           && dst_node->port.unit == iou_hdr.src_node.port.unit
           && dst_node->port.bay == iou_hdr.src_node.port.bay)
         continue;
-      
+
       /* Finish building the IOU header */
       iou_hdr.dst_node.ids = dst_node->ids;
       iou_hdr.dst_node.port = dst_node->port;
       build_iou_hdr (nodes[i].header, iou_hdr);
 
-      if (DEBUG_LOG && yap_verbose >= LOG_CRAZY) 
+      if (DEBUG_LOG && yap_verbose >= LOG_CRAZY)
         {
           if (dst_node->ids.subid_present)
             {
@@ -879,7 +1148,7 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
             fprintf(stderr, "%.2X ", nodes[i].header[j]);
           fprintf(stderr, "\n");
         }
-      
+
       if (yap_verbose >= LOG_NOISY)
         {
           if (dst_node->ids.subid_present)
@@ -894,7 +1163,7 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
                        dst_node->port.bay, dst_node->port.unit);
             }
         }
-      
+
       if (dst_node->addr.s_addr != INADDR_NONE)
         {
           nodes[i].sfd = UDP_sfd;
@@ -931,6 +1200,7 @@ make_node_table (foreign_port_t * port, int UDS_sfd, int UDP_sfd)
 }
 
 
+// TODO: we need to break this up
 static void
 create_foreign_threads (pthread_attr_t * thread_attrs,
                         int UDS_sfd, int UDP_sfd)
@@ -938,15 +1208,23 @@ create_foreign_threads (pthread_attr_t * thread_attrs,
   char *value = NULL;
   char key[MAX_KEY_SIZE];
   char port_key[6];
-  int i;
+  int i, j;
   int s;
   port_t port;
+  int pcap_no_header;
+  int pcap_overwrite;
+  char *pcap_protocol;
 
   for (i = 0; i < MAX_PORTS; i++)
     {
       port_table[i].iou_port = i;
       port_table[i].nodes = NULL;
       port_table[i].sfd = NO_FD;
+
+      /* packet capture */
+      port_table[i].span_sfd = NO_FD;
+      port_table[i].pcap_fifo = NULL;
+      port_table[i].pcap_fd = NO_FD;
 
       port = unpack_port (i);
       sprintf (port_key, "%d/%d", port.bay, port.unit);
@@ -961,6 +1239,9 @@ create_foreign_threads (pthread_attr_t * thread_attrs,
           log_fmt ("No segment using %s. Not starting listener.\n", key);
           continue;
         }
+
+      log_msg ("--------------");
+      log_fmt ("Configuring %s...\n", key);
 
       if (ini_getstr_port (&value, port_key, "eth_dev"))
         {
@@ -980,13 +1261,72 @@ create_foreign_threads (pthread_attr_t * thread_attrs,
         }
       else
         {
-          log_fmt ("No foreign interface specified for %s\n", key);
+          log_msg ("no foreign interface specified");
           continue;
+        }
+
+      if (ini_getstr_port (&value, port_key, "span_dev"))
+        {
+          open_span_dev (&port_table[i], value);
+        }
+
+      pcap_no_header = ini_getbool_port_def (port_key, "pcap_no_header", 0);
+      pcap_overwrite = ini_getbool_port_def (port_key, "pcap_overwrite", 0);
+      port_table[i].pcap_linktype =
+          ini_getint_port_def (port_key, "pcap_linktype", LINKTYPE_ETHERNET);
+
+      pcap_protocol = ini_getstr_port_def (port_key, "pcap_protocol", "");
+      /* We want to be case-insensitive */
+      for (j = 0; pcap_protocol[j]; j++)
+        {
+          pcap_protocol[j] = toupper(pcap_protocol[j]);
+        }
+      if (strcmp(pcap_protocol, "PPP") == 0)
+        {
+          port_table[i].pcap_linktype = LINKTYPE_PPP_HDLC;
+        }
+      else if (strcmp(pcap_protocol, "HDLC") == 0 ||
+               strcmp(pcap_protocol, "CHDLC") == 0)
+        {
+          port_table[i].pcap_linktype = LINKTYPE_C_HDLC;
+        }
+      else if (strcmp(pcap_protocol, "ETHERNET") == 0 ||
+               strcmp(pcap_protocol, "ETHER") == 0 ||
+               strcmp(pcap_protocol, "ETH") == 0)
+        {
+          port_table[i].pcap_linktype =  LINKTYPE_ETHERNET;
+        }
+      else if (strcmp(pcap_protocol, "FRELAY") == 0 ||
+               strcmp(pcap_protocol, "FR") == 0 ||
+               strcmp(pcap_protocol, "FRAMERELAY") == 0)
+        {
+          port_table[i].pcap_linktype = LINKTYPE_FRELAY;
+        }
+      else if (pcap_protocol[0] != '\0')
+        {
+          log_fmt ("Unknown pcap protocol: %s\n", pcap_protocol);
+        }
+
+      port_table[i].pcap_caplen =
+          ini_getint_port_def (port_key, "pcap_caplen", MAX_MTU);
+
+      if (ini_getstr_port (&value, port_key, "pcap_file"))
+        {
+          open_pcap_file (&port_table[i], value,
+                          pcap_no_header, pcap_overwrite);
+        }
+      else if (ini_getstr_port (&value, port_key, "pcap_pipe"))
+        {
+          /* Only writes up to PIPE_BUF bytes are atomic! (4K in Linux) */
+          if (port_table[i].pcap_caplen > PIPE_BUF)
+            port_table[i].pcap_caplen = PIPE_BUF;
+          open_pcap_pipe (&port_table[i], value, pcap_no_header);
         }
 
       port_table[i].nodes = make_node_table (&port_table[i],
                                              UDS_sfd, UDP_sfd);
 
+      log_msg ("starting foreign listener");
       s = pthread_create (&port_table[i].thread_id, thread_attrs,
                           &foreign_listener, &port_table[i]);
       if (s != 0)
@@ -1012,11 +1352,19 @@ free_port_table (foreign_port_t *port_table)
             port_table[i].segment->ref_cnt--;
         }
 
-      /* Cancel threads and close socket file descriptors */
+      /* Cancel threads, close file descriptors, etc. */
       if (port_table[i].sfd != NO_FD)
         {
           pthread_cancel (port_table[i].thread_id);
           close (port_table[i].sfd);
+          if (port_table[i].socket_fname)
+            unlink (port_table[i].socket_fname);
+          if (port_table[i].span_sfd != NO_FD)
+            close (port_table[i].span_sfd);
+          if (port_table[i].pcap_fifo)
+            unlink (port_table[i].pcap_fifo);
+          if (port_table[i].pcap_fd != NO_FD)
+            close (port_table[i].pcap_fd);
         }
 
       /* Free port's node table */
@@ -1031,7 +1379,7 @@ free_port_table (foreign_port_t *port_table)
 void
 print_usage (void)
 {
-  fprintf(stderr, 
+  fprintf(stderr,
           "Usage: %s [OPTION]... ID\n"
           "       %s [OPTION]... DEV_OPT ID:BAY/UNIT\n"
           "\n"
@@ -1048,7 +1396,7 @@ print_usage (void)
           "  -e ETH_DEV           connect to Ethernet device\n"
           "  -t TAP_DEV           connect to TAP device\n"
           "  -u LPORT:ADDR:RPORT  create UDP tunnel\n"
-          "  -s LFILE:RFILE       connect via Unix domain socket\n",  
+          "  -s LFILE:RFILE       connect via Unix domain socket\n",
           program_invocation_short_name, program_invocation_short_name);
 }
 
@@ -1097,7 +1445,7 @@ main (int argc, char **argv)
           yap_verbose++;
           break;
         case 'd':
-          /* Immediately put us into the background 
+          /* Immediately put us into the background
            * (good enough for now)
            */
           daemon(1, 1);  /* don't change dir, don't redirect stdio */
@@ -1151,7 +1499,7 @@ main (int argc, char **argv)
       yap_appl_id = atoi (strtok (argv[optind], ":"));
     }
   optind++;
-    
+
   sigemptyset (&sigset);
   sigaddset (&sigset, SIGHUP);
   sigaddset (&sigset, SIGTERM);
@@ -1195,7 +1543,7 @@ main (int argc, char **argv)
 
           free (cmdline_node);
         }
-      
+
       /* port table init */
       port_table = calloc (MAX_PORTS, sizeof *port_table);
       if (port_table == NULL)
@@ -1205,8 +1553,8 @@ main (int argc, char **argv)
       // TODO: add support for loading ~/.NETMAP and NETIO_NETMAP env var
       if (!cmdline_netmap)
         netmap_file = ini_getstr_id_def ("netmap", NETMAP_FILE);
-     
-      /* Quit on error parsing NETMAP file? */
+
+      log_msg("Parsing NETMAP...");
       if (!parse_netmap (netmap_file)
           && ini_getbool_id_def ("strict_mode", DEFAULT_STRICT_MODE))
         die ("exiting because of NETMAP errors (strict mode enabled)");
@@ -1217,19 +1565,25 @@ main (int argc, char **argv)
 
       /* Create foreign listeners */
       create_foreign_threads (&thread_attrs, UDS_sfd, UDP_sfd);
+      log_msg ("--------------");
       /* Create IOU listeners */
+      log_msg ("Starting IOU UDS listener");
       s = pthread_create (&UDS_thread_id, &thread_attrs,
                           &iou_listener, &UDS_sfd);
       if (s != 0)
         fatal_error_en (s, "Couldn't create IOU UDS listener thread!");
+      log_msg ("Starting IOU UDP listener");
       s = pthread_create (&UDP_thread_id, &thread_attrs,
                           &iou_listener, &UDP_sfd);
       if (s != 0)
         fatal_error_en (s, "Couldn't create IOU UDP listener thread!");
 
+      log_msg ("Main thread going to sleep");
+
       /* Time to go to sleep. Wait for a signal. */
       sigwait (&sigset, &sig);
       log_fmt ("Received signal %d\n", sig);
+      log_msg ("Stopping listeners and cleaning up");
 
       /* Cancel IOU threads and close their file descriptors */
       /* UDS */
@@ -1250,16 +1604,16 @@ main (int argc, char **argv)
       log_msg ("Reloading configuration because of SIGHUP");
     }
 
+  log_msg ("Exiting");
+
   pthread_attr_destroy (&thread_attrs);
 
   s = unlock_socket (sock_lock, sock_name);
   if (s == -1)
     log_error ("Failed to unlock");
 
-  log_msg ("Exiting");
   return EXIT_SUCCESS;
 }
-
 
 
 /*
@@ -1274,4 +1628,3 @@ main (int argc, char **argv)
  * vi: set shiftwidth=2 tabstop=2 expandtab:
  * :indentSize=2:tabSize=2:noTabs=true:
  */
-

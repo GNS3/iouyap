@@ -1,8 +1,27 @@
-
-/* TODO: Credit for some functions needs to be given to jsw_hlib 
- * author. No license issues.
+/*
+ *   This file is part of iouyap, a program to bridge IOU with
+ *   network interfaces.
+ *
+ *   Copyright (C) 2013, 2014  James E. Carpenter
+ *
+ *   iouyap is free software: you can redistribute it and/or modify it
+ *   under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   iouyap is distributed in the hope that it will be useful, but
+ *   WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* Special thanks to Julienne Walker for making Eternally Confuzzled,
+ * http://eternallyconfuzzled.com . It is from here where the hash table
+ * and linked list functions were stolen.
+ */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,6 +59,9 @@ list_head_t *segment_chain = NULL;
 int seg_counter = 0;
 
 
+/* One-at-a-time hash, by Bob Jenkins
+ * see http://www.burtleburtle.net/bob/hash/doobs.html
+ */
 static unsigned int
 oat_hash (void *key, unsigned int len)
 {
@@ -79,7 +101,7 @@ void
 delete_chain (list_head_t *chain)
 {
   list_node_t *save, *it;
-  
+
   it = chain->first;
   for (; it != NULL; it = save)
     {
@@ -174,7 +196,7 @@ ht_delete_table (ht_hash_table_t * htab)
     {
       if (htab->table[i] == NULL)
         continue;
-      
+
       delete_chain (htab->table[i]);
     }
 
@@ -238,12 +260,10 @@ end_segment (void)
 {
   list_node_t *it;
   node_t *node;
-  
-  seg_counter++;
 
-  if (yap_verbose >= LOG_NOISY) 
+  if (yap_verbose >= LOG_NOISY)
     {
-      log_fmt("segment %d:", seg_counter);
+      log_fmt ("segment %d:", seg_counter);
       it = segment_chain->first;
       do
         {
@@ -251,20 +271,20 @@ end_segment (void)
 
           if (node->ids.subid_present)
             {
-              fprintf(stderr, "  %d:%d/%d/%d", node->ids.id, node->ids.subid,
-                      node->port.bay, node->port.unit);
+              fprintf (stderr, "  %d:%d/%d/%d", node->ids.id,
+                       node->ids.subid, node->port.bay, node->port.unit);
             }
-          else 
+          else
             {
-              fprintf(stderr, "  %d:%d/%d", node->ids.id, 
-                      node->port.bay, node->port.unit);
-            }     
+              fprintf (stderr, "  %d:%d/%d", node->ids.id,
+                       node->port.bay, node->port.unit);
+            }
           if (node->addr.s_addr != INADDR_NONE)
-              fprintf(stderr, "@%s", inet_ntoa (node->addr));
+              fprintf (stderr, "@%s", inet_ntoa (node->addr));
         } while ((it = it->next) != NULL);
-      fprintf(stderr, "\n");
+      fprintf (stderr, "\n");
     }
-  
+
   /* We delete segment chains not involving us */
   if (segment_chain->ref_cnt == 0)
     {
@@ -273,6 +293,7 @@ end_segment (void)
         log_fmt ("deleted unused segment %d\n", seg_counter);
     }
 
+  seg_counter++;
   segment_chain = list_new_chain ();
 }
 
@@ -282,7 +303,7 @@ add_node (void)
 {
   ht_key_t *key;
   int port;
-  
+
   /* Create a key to use for hashing */
   key = malloc (sizeof *key);
   if (key == NULL)
@@ -297,10 +318,10 @@ add_node (void)
       free (key);
       return 0;
     }
-  
-  if (DEBUG_LOG && yap_verbose >= LOG_CRAZY) 
+
+  if (DEBUG_LOG && yap_verbose >= LOG_CRAZY)
     {
-      if (iou_node_tmp->ids.subid_present) 
+      if (iou_node_tmp->ids.subid_present)
         {
           log_fmt ("addind node %d:%d/%d/%d", iou_node_tmp->ids.id,
                    iou_node_tmp->ids.subid, iou_node_tmp->port.bay,
@@ -312,14 +333,14 @@ add_node (void)
                    iou_node_tmp->port.bay, iou_node_tmp->port.unit);
         }
       if (iou_node_tmp->addr.s_addr != INADDR_NONE)
-        fprintf(stderr, "@%s", inet_ntoa (iou_node_tmp->addr));
-      fprintf(stderr, " to segment %d\n", seg_counter);
+        fprintf (stderr, "@%s", inet_ntoa (iou_node_tmp->addr));
+      fprintf (stderr, " to segment %d\n", seg_counter);
     }
 
   pt_insert_node (segment_chain, iou_node_tmp);
 
   /* Is this IOU node for us? */
-  if (iou_node_tmp->ids.id == yap_appl_id 
+  if (iou_node_tmp->ids.id == yap_appl_id
       && iou_node_tmp->ids.subid_present == 0)
     {
       /* Save a pointer to the chain we're currently making */
@@ -329,7 +350,7 @@ add_node (void)
     }
 
   iou_node_tmp = new_iou_node ();
-  
+
   return 1;
 }
 
@@ -341,41 +362,41 @@ dump_port_table (void)
   list_node_t *it;
   node_t *node;
   port_t our_port;
-  
-  for (i=0; i < MAX_PORTS; i++) 
+
+  for (i=0; i < MAX_PORTS; i++)
     {
       if (port_table[i].segment == NULL)
         continue;
 
       our_port = unpack_port (i);
-      log_fmt("%d:%d/%d talks to %d other node(s):\n", yap_appl_id,
-              our_port.bay, our_port.unit, 
-              (port_table[i].segment->size - 1));
+      log_fmt ("%d:%d/%d talks to %d other node(s):\n", yap_appl_id,
+               our_port.bay, our_port.unit,
+               (port_table[i].segment->size - 1));
 
       it = port_table[i].segment->first;
-      do 
+      do
         {
           node = (node_t *)it->data;
-          
+
           if (node->ids.id == yap_appl_id
               && node->ids.subid_present == 0
               && pack_port (node->port) == i)
             continue;
-              
+
           if (node->ids.subid_present)
             {
-              log_fmt("\t  %d:%d/%d/%d", node->ids.id, node->ids.subid,
-                      node->port.bay, node->port.unit);
+              log_fmt ("\t  %d:%d/%d/%d", node->ids.id, node->ids.subid,
+                       node->port.bay, node->port.unit);
             }
-          else 
+          else
             {
-              log_fmt("\t  %d:%d/%d", node->ids.id, 
-                      node->port.bay, node->port.unit);
-            }     
+              log_fmt ("\t  %d:%d/%d", node->ids.id,
+                       node->port.bay, node->port.unit);
+            }
           if (node->addr.s_addr != INADDR_NONE)
               fprintf(stderr, "@%s", inet_ntoa (node->addr));
           fprintf(stderr, "\n");
-     
+
         } while ((it = it->next) != NULL);
     }
 }
@@ -386,7 +407,7 @@ parse_netmap (char *file)
 {
   if (!(yyin = fopen (file, "r")))
     {
-      log_fmt ("Unable to open NETMAP file: ");
+      log_fmt ("Unable to open NETMAP file: %s\n", file);
       fatal_error (file);
     }
 
@@ -405,12 +426,12 @@ parse_netmap (char *file)
   yylex_destroy ();
   ht_delete_table (hash_table);
 
-  if (yap_verbose >= LOG_BASIC) 
+  if (yap_verbose >= LOG_BASIC)
     {
-      dump_port_table (); 
+      dump_port_table ();
       log_fmt ("%d NETMAP errors\n", errors_found);
     }
-  
+
   return (errors_found == 0);
 }
 
