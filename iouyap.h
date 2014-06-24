@@ -89,6 +89,11 @@ struct sockaddr_un sizecheck;
 #define UNIX_PATH_MAX sizeof(sizecheck.sun_path)
 #endif
 
+/* Not everyone has IFF_MULTI_QUEUE */
+#ifndef IFF_MULTI_QUEUE
+#define IFF_MULTI_QUEUE 0x0100
+#endif
+
 /* Logging levels */
 enum {LOG_QUIET, LOG_BASIC, LOG_EXTENDED, LOG_NOISY, LOG_CRAZY};
 
