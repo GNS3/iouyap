@@ -25,6 +25,8 @@
 #include <errno.h>
 #include <sys/un.h>
 
+#define NAME                  "iouyap"
+#define VERSION               "0.95.0"
 
 #define CONFIG_FILE           "iouyap.ini"
 #define NETMAP_FILE           "NETMAP"
@@ -233,7 +235,8 @@ struct pcap_file_header {
 };
 
 struct pcap_pkthdr {
-  struct timeval ts;            /* time stamp */
+  int32_t   tv_sec;             /* time stamp */
+  int32_t   tv_usec;
   u_int32_t caplen;             /* length of portion present */
   u_int32_t len;                /* length this packet (off wire) */
 };

@@ -52,6 +52,7 @@
 
 
 extern char *program_invocation_short_name;
+extern char *program_invocation_name;
 
 int yap_appl_id = -1;
 unsigned int yap_verbose = LOG_BASIC;
@@ -353,8 +354,11 @@ write_pcap_frame (int fd, const unsigned char *packet, size_t len,
   struct pcap_pkthdr pcap_header;
   size_t hdr_len = sizeof pcap_header;
   unsigned char buf[MAX_MTU + hdr_len];
+  struct timeval ts;
 
-  gettimeofday (&pcap_header.ts, 0);
+  gettimeofday (&ts, 0);
+  pcap_header.tv_sec = ts.tv_sec;
+  pcap_header.tv_usec = ts.tv_usec;
 
   if (len < caplen)
     caplen = len;
@@ -423,17 +427,9 @@ foreign_listener (void *arg)
 
       if (port->pcap_fd != NO_FD)
         {
-          if (write_pcap_frame (port->pcap_fd, &buf[IOU_HDR_SIZE],
-                                bytes_received, port->pcap_caplen,
-                                port->pcap_linktype) < 0)
-            {
-              if (errno == EPIPE)
-                {
-                  log_msg ("Packet capture reader disappeared");
-                  log_msg ("Restarting with a SIGHUP");
-                  kill (0, SIGHUP);
-                }
-            }
+          write_pcap_frame (port->pcap_fd, &buf[IOU_HDR_SIZE],
+                            bytes_received, port->pcap_caplen,
+                            port->pcap_linktype);
         }
 
 
@@ -551,17 +547,9 @@ iou_listener (void *arg)
 
       if (port_table[port].pcap_fd != NO_FD)
         {
-          if (write_pcap_frame (port_table[port].pcap_fd, &buf[IOU_HDR_SIZE],
-                                bytes_received, port_table[port].pcap_caplen,
-                                port_table[port].pcap_linktype) < 0)
-            {
-              if (errno == EPIPE)
-                {
-                  log_msg ("Packet capture reader disappeared");
-                  log_msg ("Restarting with a SIGHUP");
-                  kill (0, SIGHUP);
-                }
-            }
+          write_pcap_frame (port_table[port].pcap_fd, &buf[IOU_HDR_SIZE],
+                            bytes_received, port_table[port].pcap_caplen,
+                            port_table[port].pcap_linktype);
         }
 
 
@@ -1376,28 +1364,37 @@ free_port_table (foreign_port_t *port_table)
 }
 
 
-void
+static void
 print_usage (void)
 {
-  fprintf(stderr,
-          "Usage: %s [OPTION]... ID\n"
-          "       %s [OPTION]... DEV_OPT ID:BAY/UNIT\n"
-          "\n"
-          "Options:\n"
-          "  -h                   print this message\n"
-          "  -q                   suppress most output\n"
-          "  -v|v|v               increase output\n"
-          "  -d                   run in background\n"
-          "  -c                   do not read configuration file\n"
-          "  -f FILE              specify configuration file\n"
-          "  -n FILE              specify NETMAP file\n"
-          "\n"
-          "Device options:\n"
-          "  -e ETH_DEV           connect to Ethernet device\n"
-          "  -t TAP_DEV           connect to TAP device\n"
-          "  -u LPORT:ADDR:RPORT  create UDP tunnel\n"
-          "  -s LFILE:RFILE       connect via Unix domain socket\n",
-          program_invocation_short_name, program_invocation_short_name);
+  printf("Usage: %s [OPTION]... ID\n"
+         "       %s [OPTION]... DEV_OPT ID:BAY/UNIT\n"
+         "\n"
+         "Options:\n"
+         "  -h                   print this message and exit\n"
+         "  -q                   suppress most output\n"
+         "  -v|v|v               increase output\n"
+         "  -d                   run in background\n"
+         "  -c                   do not read configuration file\n"
+         "  -f FILE              specify configuration file\n"
+         "  -n FILE              specify NETMAP file\n"
+         "  -V                   print version and exit\n"
+         "\n"
+         "Device options:\n"
+         "  -e ETH_DEV           connect to Ethernet device\n"
+         "  -t TAP_DEV           connect to TAP device\n"
+         "  -u LPORT:ADDR:RPORT  create UDP tunnel\n"
+         "  -s LFILE:RFILE       connect via Unix domain socket\n",
+         program_invocation_short_name,
+         program_invocation_short_name);
+}
+
+
+static void
+print_for_help (void)
+{
+  fprintf(stderr, "Use '%s -h' for help.\n",
+          program_invocation_short_name);
 }
 
 
@@ -1431,7 +1428,7 @@ main (int argc, char **argv)
   char *cmdline_node = NULL;
 
 #define NUM_NONOPT 1
-  while ((opt = getopt (argc, argv, "hvdqcf:n:e:t:u:s:")) != -1)
+  while ((opt = getopt (argc, argv, "hvdqcVf:n:e:t:u:s:")) != -1)
     {
       switch (opt)
         {
@@ -1453,6 +1450,9 @@ main (int argc, char **argv)
         case 'c':
           config_ini = "/dev/null";
           break;
+        case 'V':
+          printf("%s version %s\n", NAME, VERSION);
+          exit (EXIT_SUCCESS);
         case 'f':
           config_ini = optarg;
           break;
@@ -1477,7 +1477,8 @@ main (int argc, char **argv)
           cmdline_dev = optarg;
           break;
         default:               /* '?' */
-          print_usage ();
+          /* getopt prints an error message for us */
+          print_for_help ();
           exit (EXIT_FAILURE);
         }
     }
@@ -1485,7 +1486,9 @@ main (int argc, char **argv)
   /* check non-option args */
   if (optind + NUM_NONOPT != argc)
     {
-      print_usage ();
+      fprintf(stderr, "%s: invalid args\n",
+              program_invocation_name);
+      print_for_help ();
       exit (EXIT_FAILURE);
     }
 
@@ -1499,6 +1502,10 @@ main (int argc, char **argv)
       yap_appl_id = atoi (strtok (argv[optind], ":"));
     }
   optind++;
+
+  /* The program version can be nice to know */
+  if (DEBUG_LOG || yap_verbose >= LOG_EXTENDED)
+    log_fmt ("%s %s starting\n", NAME, VERSION);
 
   sigemptyset (&sigset);
   sigaddset (&sigset, SIGHUP);
