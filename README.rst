@@ -16,9 +16,10 @@ Installation on Linux (Debian based)
    sudo cp libiniparser.* /usr/lib/
    sudo cp src/iniparser.h /usr/local/include
    sudo cp src/dictionary.h /usr/local/include
+   cd ..
 
    git clone https://github.com/GNS3/iouyap.git
    cd iouyap
    make
-   chmod +x iouyap
-   sudo cp iouyap /usr/local/bin/
+   sudo make install
+
