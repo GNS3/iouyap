@@ -48,7 +48,6 @@ clean :
 	-rm iouyap y.tab.* *.o
 
 install : iouyap
-          setcap cap_net_admin,cap_net_raw=ep iouyap
-          chmod +x iouyap
-          sudo cp iouyap /usr/local/bin
-
+	setcap cap_net_admin,cap_net_raw=ep iouyap
+	chmod +x iouyap
+	sudo cp iouyap /usr/local/bin
