@@ -369,7 +369,7 @@ dump_port_table (void)
         continue;
 
       our_port = unpack_port (i);
-      log_fmt ("%d:%d/%d talks to %d other node(s):\n", yap_appl_id,
+      log_fmt ("%d:%d/%d talks to %zd other node(s):\n", yap_appl_id,
                our_port.bay, our_port.unit,
                (port_table[i].segment->size - 1));
 
