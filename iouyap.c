@@ -417,7 +417,7 @@ foreign_listener (void *arg)
         }
 
       if (yap_verbose >= LOG_CRAZY)
-        debug_log_fmt ("received %d bytes (sfd=%d)\n",
+        debug_log_fmt ("received %zd bytes (sfd=%d)\n",
                        bytes_received, port->sfd);
 
 
@@ -455,7 +455,7 @@ foreign_listener (void *arg)
             {
               if (bytes_sent != -1)  /* no error, shouldn't happen */
                 {
-                  log_fmt ("sendto() only sent %d of %d bytes!"
+                  log_fmt ("sendto() only sent %zd of %zd bytes!"
                            " (sfd=%d)\n", bytes_sent,
                            bytes_received, port->sfd);
                   continue;
@@ -533,7 +533,7 @@ iou_listener (void *arg)
       port = buf[IOU_DST_PORT];
 
       if (yap_verbose >= LOG_CRAZY)
-        debug_log_fmt ("received %d bytes for port %d (sfd=%d)\n",
+        debug_log_fmt ("received %zd bytes for port %d (sfd=%d)\n",
                        bytes_received, port, sfd);
 
       /* Send on the packet, minus the IOU header */
@@ -560,7 +560,7 @@ iou_listener (void *arg)
         {
           if (bytes_sent != -1)  /* no error, shouldn't happen */
             {
-              log_fmt ("write() only sent %d of %d bytes! (sfd=%d)\n",
+              log_fmt ("write() only sent %zd of %zd bytes! (sfd=%d)\n",
                        bytes_sent, bytes_received, sfd);
               continue;
             }
