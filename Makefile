@@ -23,7 +23,7 @@ BINDIR = /usr/local/bin
 
 srcdir = .
 
-CC = gcc #-O3
+CC = gcc -I #-O3
 CDEBUG = -g -DDEBUG
 CFLAGS = $(CDEBUG) -Wall
 

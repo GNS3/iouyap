@@ -27,12 +27,12 @@ extern short yap_appl_id;
 extern dictionary *yap_config;
 
 
-#define KEY_DEF(key, param) \
-  sprintf(key, "%s:%s", DEFAULT_SECTION, param)
-#define KEY_ID(key, param)  \
-  sprintf(key, "%d:%s", yap_appl_id, param)
-#define KEY_PORT(key, port, param) \
-  sprintf(key, "%d:%s:%s", yap_appl_id, port, param)
+#define KEY_DEF(key, n, param) \
+  snprintf(key, (n), "%s:%s", DEFAULT_SECTION, param)
+#define KEY_ID(key, n, param)  \
+  snprintf(key, (n), "%d:%s", yap_appl_id, param)
+#define KEY_PORT(key, n, port, param) \
+  snprintf(key, (n), "%d:%s:%s", yap_appl_id, port, param)
 
 
 int
@@ -47,7 +47,7 @@ ini_find_default (char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_DEF (key, param);
+  KEY_DEF (key, sizeof(key), param);
   return ini_find (key);
 }
 
@@ -57,7 +57,7 @@ ini_find_id (char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_ID (key, param);
+  KEY_ID (key, sizeof(key), param);
   return ini_find (key);
 }
 
@@ -67,7 +67,7 @@ ini_find_port (char *port, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_PORT (key, port, param);
+  KEY_PORT (key, sizeof(key), port, param);
   return ini_find (key);
 }
 
@@ -88,7 +88,7 @@ ini_getstr_default (char **value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_DEF (key, param);
+  KEY_DEF (key, sizeof(key), param);
   if (ini_getstr (value, key))
     return 1;
   return 0;
@@ -100,7 +100,7 @@ ini_getstr_id (char **value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_ID (key, param);
+  KEY_ID (key, sizeof(key), param);
   if (ini_getstr (value, key))
     return 1;
   return ini_getstr_default (value, param);
@@ -112,7 +112,7 @@ ini_getstr_port (char **value, char *port, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_PORT (key, port, param);
+  KEY_PORT (key, sizeof(key), port, param);
   if (ini_getstr (value, key))
     return 1;
   return ini_getstr_id (value, param);
@@ -168,7 +168,7 @@ ini_getint_default (int *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_DEF (key, param);
+  KEY_DEF (key, sizeof(key), param);
   if (ini_getint (value, key))
     return 1;
   return 0;
@@ -180,7 +180,7 @@ ini_getint_id (int *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_ID (key, param);
+  KEY_ID (key, sizeof(key), param);
   if (ini_getint (value, key))
     return 1;
   return ini_getint_default (value, param);
@@ -192,7 +192,7 @@ ini_getint_port (int *value, char *port, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_PORT (key, port, param);
+  KEY_PORT (key, sizeof(key), port, param);
   if (ini_getint (value, key))
     return 1;
   return ini_getint_id (value, param);
@@ -248,7 +248,7 @@ ini_getbool_default (int *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_DEF (key, param);
+  KEY_DEF (key, sizeof(key), param);
   if (ini_getbool (value, key))
     return 1;
   return 0;
@@ -260,7 +260,7 @@ ini_getbool_id (int *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_ID (key, param);
+  KEY_ID (key, sizeof(key), param);
   if (ini_getbool (value, key))
     return 1;
   return ini_getbool_default (value, param);
@@ -272,7 +272,7 @@ ini_getbool_port (int *value, char *port, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_PORT (key, port, param);
+  KEY_PORT (key, sizeof(key), port, param);
   if (ini_getbool (value, key))
     return 1;
   return ini_getbool_id (value, param);
@@ -328,7 +328,7 @@ ini_getdouble_default (double *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_DEF (key, param);
+  KEY_DEF (key, sizeof(key), param);
   if (ini_getdouble (value, key))
     return 1;
   return 0;
@@ -340,7 +340,7 @@ ini_getdouble_id (double *value, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_ID (key, param);
+  KEY_ID (key, sizeof(key), param);
   if (ini_getdouble (value, key))
     return 1;
   return ini_getdouble_default (value, param);
@@ -352,7 +352,7 @@ ini_getdouble_port (double *value, char *port, char *param)
 {
   char key[MAX_KEY_SIZE];
 
-  KEY_PORT (key, port, param);
+  KEY_PORT (key, sizeof(key), port, param);
   if (ini_getdouble (value, key))
     return 1;
   return ini_getdouble_id (value, param);

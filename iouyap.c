@@ -179,7 +179,7 @@ lock_socket (const char *name)
 
   // We have the lock. Wipe out the file and put our PID in it.
   ftruncate (fd, 0);
-  pid_len = sprintf (pid, "%ld\n", (long) getpid ());
+  pid_len = snprintf (pid, sizeof(pid), "%ld\n", (long) getpid ());
   if (write (fd, pid, pid_len) == -1)
     {
       e = errno;
@@ -1052,7 +1052,7 @@ open_iou_udp ()
   hints.ai_next = NULL;
 
   // TODO: allow binding to a specific IP address
-  sprintf (local_port, "%u", get_iou_udp_port (yap_appl_id));
+  snprintf (local_port, sizeof(local_port), "%u", get_iou_udp_port (yap_appl_id));
   if (getaddrinfo (NULL, local_port, &hints, &result) != 0)
     fatal_error ("getaddrinfo");
 
@@ -1221,8 +1221,8 @@ create_foreign_threads (pthread_attr_t * thread_attrs,
       port_table[i].pcap_fd = NO_FD;
 
       port = unpack_port (i);
-      sprintf (port_key, "%d/%d", port.bay, port.unit);
-      sprintf (key, "%d:%s", yap_appl_id, port_key);
+      snprintf (port_key, sizeof(port_key), "%d/%d", port.bay, port.unit);
+      snprintf (key, sizeof(key), "%d:%s", yap_appl_id, port_key);
 
       /* Don't bother if the section doesn't even exist */
       if (!ini_find (key))
@@ -1551,7 +1551,7 @@ main (int argc, char **argv)
           iniparser_set (yap_config, cmdline_node, NULL);
 
           /* Now create the key=value pair */
-          sprintf (key, "%s:%s", cmdline_node, cmdline_dev_type);
+          snprintf (key, sizeof(key), "%s:%s", cmdline_node, cmdline_dev_type);
           iniparser_set (yap_config, key, cmdline_dev);
 
           free (cmdline_node);
