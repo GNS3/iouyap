@@ -356,6 +356,9 @@ write_pcap_frame (int fd, const unsigned char *packet, size_t len,
   unsigned char buf[MAX_MTU + hdr_len];
   struct timeval ts;
 
+  if (caplen > MAX_MTU)
+     return -1;
+
   gettimeofday (&ts, 0);
   pcap_header.tv_sec = ts.tv_sec;
   pcap_header.tv_usec = ts.tv_usec;
@@ -398,7 +401,7 @@ foreign_listener (void *arg)
       /* Put received bytes after the (absent) IOU header */
       bytes_received = read (port->sfd, &buf[IOU_HDR_SIZE], MAX_MTU);
 
-      if (bytes_received == -1)
+      if (bytes_received <= 0)
         {
           /* When tunneling, because our sends are asynchronous, we
            * can get errors here from ICMP packets for UDP packets we
@@ -513,7 +516,7 @@ iou_listener (void *arg)
     {
       /* This receives from an IOU instance */
       bytes_received = read (sfd, buf, IOU_HDR_SIZE + MAX_MTU);
-      if (bytes_received == -1)
+      if (bytes_received <= 0)
         {
           log_error ("read");
           break;
@@ -535,6 +538,9 @@ iou_listener (void *arg)
       if (yap_verbose >= LOG_CRAZY)
         debug_log_fmt ("received %zd bytes for port %d (sfd=%d)\n",
                        bytes_received, port, sfd);
+
+      if (bytes_received <= IOU_HDR_SIZE)
+          continue; 
 
       /* Send on the packet, minus the IOU header */
       bytes_received -= IOU_HDR_SIZE;
