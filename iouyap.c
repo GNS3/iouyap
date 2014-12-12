@@ -179,7 +179,7 @@ lock_socket (const char *name)
 
   // We have the lock. Wipe out the file and put our PID in it.
   ftruncate (fd, 0);
-  pid_len = sprintf (pid, "%ld\n", (long) getpid ());
+  pid_len = snprintf (pid, sizeof(pid), "%ld\n", (long) getpid ());
   if (write (fd, pid, pid_len) == -1)
     {
       e = errno;
@@ -356,6 +356,9 @@ write_pcap_frame (int fd, const unsigned char *packet, size_t len,
   unsigned char buf[MAX_MTU + hdr_len];
   struct timeval ts;
 
+  if (caplen > MAX_MTU)
+     return -1;
+
   gettimeofday (&ts, 0);
   pcap_header.tv_sec = ts.tv_sec;
   pcap_header.tv_usec = ts.tv_usec;
@@ -398,7 +401,7 @@ foreign_listener (void *arg)
       /* Put received bytes after the (absent) IOU header */
       bytes_received = read (port->sfd, &buf[IOU_HDR_SIZE], MAX_MTU);
 
-      if (bytes_received == -1)
+      if (bytes_received <= 0)
         {
           /* When tunneling, because our sends are asynchronous, we
            * can get errors here from ICMP packets for UDP packets we
@@ -513,7 +516,7 @@ iou_listener (void *arg)
     {
       /* This receives from an IOU instance */
       bytes_received = read (sfd, buf, IOU_HDR_SIZE + MAX_MTU);
-      if (bytes_received == -1)
+      if (bytes_received <= 0)
         {
           log_error ("read");
           break;
@@ -535,6 +538,9 @@ iou_listener (void *arg)
       if (yap_verbose >= LOG_CRAZY)
         debug_log_fmt ("received %zd bytes for port %d (sfd=%d)\n",
                        bytes_received, port, sfd);
+
+      if (bytes_received <= IOU_HDR_SIZE)
+          continue; 
 
       /* Send on the packet, minus the IOU header */
       bytes_received -= IOU_HDR_SIZE;
@@ -1046,7 +1052,7 @@ open_iou_udp ()
   hints.ai_next = NULL;
 
   // TODO: allow binding to a specific IP address
-  sprintf (local_port, "%u", get_iou_udp_port (yap_appl_id));
+  snprintf (local_port, sizeof(local_port), "%u", get_iou_udp_port (yap_appl_id));
   if (getaddrinfo (NULL, local_port, &hints, &result) != 0)
     fatal_error ("getaddrinfo");
 
@@ -1215,8 +1221,8 @@ create_foreign_threads (pthread_attr_t * thread_attrs,
       port_table[i].pcap_fd = NO_FD;
 
       port = unpack_port (i);
-      sprintf (port_key, "%d/%d", port.bay, port.unit);
-      sprintf (key, "%d:%s", yap_appl_id, port_key);
+      snprintf (port_key, sizeof(port_key), "%d/%d", port.bay, port.unit);
+      snprintf (key, sizeof(key), "%d:%s", yap_appl_id, port_key);
 
       /* Don't bother if the section doesn't even exist */
       if (!ini_find (key))
@@ -1545,7 +1551,7 @@ main (int argc, char **argv)
           iniparser_set (yap_config, cmdline_node, NULL);
 
           /* Now create the key=value pair */
-          sprintf (key, "%s:%s", cmdline_node, cmdline_dev_type);
+          snprintf (key, sizeof(key), "%s:%s", cmdline_node, cmdline_dev_type);
           iniparser_set (yap_config, key, cmdline_dev);
 
           free (cmdline_node);
