@@ -19,6 +19,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 SHELL = /bin/sh
+BINDIR = /usr/local/bin
 
 srcdir = .
 
@@ -48,6 +49,7 @@ clean :
 	-rm iouyap y.tab.* *.o
 
 install : iouyap
-	setcap cap_net_admin,cap_net_raw=ep iouyap
 	chmod +x iouyap
-	sudo cp iouyap /usr/local/bin
+	sudo cp iouyap $(BINDIR)
+        sudo setcap cap_net_admin,cap_net_raw=ep iouyap
+
