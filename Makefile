@@ -23,7 +23,7 @@ BINDIR = /usr/local/bin
 
 srcdir = .
 
-CC = gcc -I #-O3
+CC = gcc #-O3
 CDEBUG = -g -DDEBUG
 CFLAGS = $(CDEBUG) -Wall
 
@@ -51,5 +51,4 @@ clean :
 install : iouyap
 	chmod +x iouyap
 	sudo cp iouyap $(BINDIR)
-        sudo setcap cap_net_admin,cap_net_raw=ep iouyap
-
+	sudo setcap cap_net_admin,cap_net_raw=ep iouyap
