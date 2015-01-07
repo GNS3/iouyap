@@ -63,7 +63,7 @@ foreign_port_t *port_table = NULL;
 static int
 set_socket_directory (char *dir)
 {
-  return snprintf (dir, UNIX_PATH_MAX, "%s%u", NETIO_DIR_PREFIX, geteuid ());
+  return snprintf (dir, UNIX_PATH_MAX, "%s%u", NETIO_DIR_PREFIX, getuid ());
 }
 
 
@@ -776,6 +776,10 @@ open_pcap_file (foreign_port_t * port, char *file, int no_hdr, int overwrite)
 
   if ((fd = open (file, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR)) < 0)
     fatal_error ("open");
+    
+  if( getuid() != geteuid() )
+    if( fchown(fd, getuid (), -1) )
+        fatal_error ("fchown");
 
   /* If we can get an exclusive lock (without blocking) then check to see
    * if the file is empty. Write a pcap header if it is.
@@ -1028,6 +1032,10 @@ open_iou_uds ()
   unlink (sock_addr.sun_path);
   if (bind (sfd, (struct sockaddr *) &sock_addr, sizeof sock_addr))
     fatal_error ("bind");
+  
+  if( getuid() != geteuid() )
+    if( chown(sock_addr.sun_path, getuid (), -1) )
+        fatal_error ("chown");
 
   return sfd;
 }
