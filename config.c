@@ -18,7 +18,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <iniparser.h>
+#include "iniparser/iniparser.h"
 
 #include "config.h"
 

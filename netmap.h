@@ -21,6 +21,7 @@
 #ifndef NETMAP_H_
 #define NETMAP_H_
 
+#include <stdio.h>
 #include "iouyap.h"
 
 

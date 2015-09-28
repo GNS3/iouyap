@@ -18,37 +18,35 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-SHELL = /bin/sh
+NAME = iouyap
+
 BINDIR = /usr/local/bin
 
-srcdir = .
-
 CC = gcc #-O3
-CDEBUG = -g -DDEBUG
-CFLAGS = $(CDEBUG) -Wall
+CFLAGS = -Wall
 
-LDLIBS = -liniparser -lpthread
-LDFLAGS =
+LDLIBS = -lpthread
 
 YACC = bison -y
 YFLAGS = -d
 
 LEX = flex
-LFLAGS =
 
-objects = netmap_parse.o netmap_scan.o netmap.o config.o iouyap.o
+SRCDIR = .,iniparser
 
-all : iouyap
+OBJECTS = netmap_parse.o netmap_scan.o netmap.o config.o iouyap.o iniparser/iniparser.o iniparser/dictionary.o
 
-iouyap : $(objects)
+$(OBJECTS) = iouyap.h netmap.h config.h iniparser/iniparser.h iniparser/dictionary.h
 
-$(objects) : iouyap.h netmap.h config.h
+all: $(NAME)
+
+$(NAME): $(OBJECTS)
 
 .PHONY : clean
 clean :
-	-rm iouyap y.tab.* *.o
+	rm -f iouyap y.tab.* *.o */*.o
 
-install : iouyap
+install : $(NAME)
 	chmod +x iouyap
 	sudo cp iouyap $(BINDIR)
 	sudo setcap cap_net_admin,cap_net_raw=ep iouyap

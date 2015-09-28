@@ -37,7 +37,6 @@
 #include <netpacket/packet.h>
 #include <net/ethernet.h>
 #include <netdb.h>
-#include <iniparser.h>
 #include <net/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/netlink.h>
@@ -47,6 +46,7 @@
 #include <ctype.h>
 
 #include "iouyap.h"
+#include "iniparser/iniparser.h"
 #include "netmap.h"
 #include "config.h"
 
@@ -540,7 +540,7 @@ iou_listener (void *arg)
                        bytes_received, port, sfd);
 
       if (bytes_received <= IOU_HDR_SIZE)
-          continue; 
+          continue;
 
       /* Send on the packet, minus the IOU header */
       bytes_received -= IOU_HDR_SIZE;
@@ -776,7 +776,7 @@ open_pcap_file (foreign_port_t * port, char *file, int no_hdr, int overwrite)
 
   if ((fd = open (file, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR)) < 0)
     fatal_error ("open");
-    
+
   if( getuid() != geteuid() )
     if( fchown(fd, getuid (), -1) )
         fatal_error ("fchown");
@@ -1032,7 +1032,7 @@ open_iou_uds ()
   unlink (sock_addr.sun_path);
   if (bind (sfd, (struct sockaddr *) &sock_addr, sizeof sock_addr))
     fatal_error ("bind");
-  
+
   if( getuid() != geteuid() )
     if( chown(sock_addr.sun_path, getuid (), -1) )
         fatal_error ("chown");
