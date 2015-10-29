@@ -49,4 +49,4 @@ clean :
 install : $(NAME)
 	chmod +x iouyap
 	sudo cp iouyap $(BINDIR)
-	sudo setcap cap_net_admin,cap_net_raw=ep iouyap
+	sudo setcap cap_net_admin,cap_net_raw=ep $(BINDIR)/$(NAME)
