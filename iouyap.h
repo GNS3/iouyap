@@ -26,7 +26,7 @@
 #include <sys/un.h>
 
 #define NAME                  "iouyap"
-#define VERSION               "0.96.0"
+#define VERSION               "0.97.0"
 
 #define CONFIG_FILE           "iouyap.ini"
 #define NETMAP_FILE           "NETMAP"
