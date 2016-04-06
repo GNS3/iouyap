@@ -24,6 +24,7 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <sys/un.h>
+#include <sys/types.h>
 
 #define NAME                  "iouyap"
 #define VERSION               "0.97.0"

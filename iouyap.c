@@ -35,7 +35,9 @@
 #include <linux/if_tun.h>
 #include <arpa/inet.h>
 #include <netpacket/packet.h>
+#if HAVE_NETINET_IF_ETHER_H && !HAVE_LINUX_IF_TUN_H
 #include <net/ethernet.h>
+#endif
 #include <netdb.h>
 #include <net/if_arp.h>
 #include <linux/rtnetlink.h>
