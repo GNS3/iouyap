@@ -47,8 +47,13 @@
 #include <sys/file.h>
 #include <ctype.h>
 
-#include "iouyap.h"
+#ifdef USE_SYSTEM_INIPARSER
+#include <iniparser.h>
+#else
 #include "iniparser/iniparser.h"
+#endif
+
+#include "iouyap.h"
 #include "netmap.h"
 #include "config.h"
 

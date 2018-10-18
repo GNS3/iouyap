@@ -22,8 +22,8 @@ NAME = iouyap
 
 BINDIR = /usr/local/bin
 
-CC = gcc #-O3
-CFLAGS = -Wall
+CC ?= gcc #-O3
+CFLAGS += -Wall
 
 LDLIBS = -lpthread
 
@@ -32,7 +32,14 @@ YFLAGS = -d
 
 LEX = flex
 
-SRCDIR = .,iniparser
+SRCDIR = .
+
+ifeq ($(SYSTEM_INIPARSER),1)
+	LDLIBS += -liniparser
+	CFLAGS += -DUSE_SYSTEM_INIPARSER
+else
+	SRCDIR += ,iniparser
+endif
 
 OBJECTS = netmap_parse.o netmap_scan.o netmap.o config.o iouyap.o iniparser/iniparser.o iniparser/dictionary.o
 
@@ -41,6 +48,7 @@ $(OBJECTS) = iouyap.h netmap.h config.h iniparser/iniparser.h iniparser/dictiona
 all: $(NAME)
 
 $(NAME): $(OBJECTS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(NAME) $(OBJECTS) $(LDLIBS)
 
 .PHONY : clean
 clean :

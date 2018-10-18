@@ -18,7 +18,11 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifdef USE_SYSTEM_INIPARSER
+#include <iniparser.h>
+#else
 #include "iniparser/iniparser.h"
+#endif
 
 #include "config.h"
 
