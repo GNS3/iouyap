@@ -1,7 +1,7 @@
 iouyap
 ======
 
-Bridge IOU to UDP, TAP and Ethernet.
+Bridge IOU to UDP, TAP and Ethernet. Please note that **iouyap has been replaced by uBridge** https://github.com/GNS3/ubridge
 
 Installation on Linux (Debian based)
 ------------------------------------
